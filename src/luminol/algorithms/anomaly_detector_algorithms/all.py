@@ -10,6 +10,7 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 """
 from luminol.algorithms.anomaly_detector_algorithms import (bitmap_detector,
+                                                            bitmap_mod,
                                                             default_detector,
                                                             derivative_detector,
                                                             exp_avg_detector,
@@ -19,6 +20,7 @@ from luminol.algorithms.anomaly_detector_algorithms import (bitmap_detector,
 
 anomaly_detector_algorithms = {
     'bitmap_detector': bitmap_detector.BitmapDetector,
+    'bitmap_mod': bitmap_mod.BitmapMod,
     'default_detector': default_detector.DefaultDetector,
     'derivative_detector': derivative_detector.DerivativeDetector,
     'exp_avg_detector': exp_avg_detector.ExpAvgDetector,
