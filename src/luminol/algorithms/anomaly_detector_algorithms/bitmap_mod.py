@@ -23,9 +23,6 @@ from luminol.constants import (DEFAULT_BITMAP_PRECISION,
                                DEFAULT_BITMAP_MINIMAL_POINTS_IN_WINDOWS,
                                DEFAULT_BITMAP_MAXIMAL_POINTS_IN_WINDOWS)
 
-import logging
-logging.basicConfig(filename='bitmap_mod.log', level=logging.DEBUG)
-
 class BitmapMod(AnomalyDetectorAlgorithm):
 
     """
@@ -96,14 +93,17 @@ class BitmapMod(AnomalyDetectorAlgorithm):
         Generate SAX representation for all values of the time series.
         """
         sections = {}
-        self.value_min = self.time_series.min()
-        self.value_max = self.time_series.max()
+        self.value_max = max(self.time_series.max(), self.baseline_time_series.max())
+        self.value_min = min(self.time_series.min(), self.baseline_time_series.min())
         # Break the whole value range into different sections.
         section_height = (self.value_max - self.value_min) / self.precision
         for section_number in range(self.precision):
             sections[section_number] = self.value_min + section_number * section_height
         # Generate SAX representation.
         self.sax = ''.join(self._generate_SAX_single(sections, value) for value in self.time_series.values)
+
+        if self.baseline_time_series:
+            self.base_sax = ''.join(self._generate_SAX_single(sections, value) for value in self.baseline_time_series.values)
 
     def _construct_SAX_chunk_dict(self, sax):
         """
@@ -144,8 +144,10 @@ class BitmapMod(AnomalyDetectorAlgorithm):
             else:
                 # Just enter valid range.
                 if lag_dicts[i - 1] is None:
-                    lag_dict = self._construct_SAX_chunk_dict(self.sax[i - lws: i])
-                    lag_dicts[i] = lag_dict
+                    if not self.base_sax:
+                        lag_dict = self._construct_SAX_chunk_dict(self.sax[i - lws: i])
+                        lag_dicts[i] = lag_dict
+
                     lw_leave_chunk = self.sax[0:chunk_size]
                     lw_enter_chunk = self.sax[i - chunk_size + 1: i + 1]
 
@@ -156,26 +158,45 @@ class BitmapMod(AnomalyDetectorAlgorithm):
 
                 else:
                     # Update dicts according to leave_chunks and enter_chunks.
-                    lag_dict = copy(lag_dicts[i - 1])
-                    lag_dict[lw_leave_chunk] -= 1
-                    lag_dict[lw_enter_chunk] += 1
-                    lag_dicts[i] = lag_dict
+                    if not self.base_sax:
+                        lag_dict = copy(lag_dicts[i - 1])
+                        lag_dict[lw_leave_chunk] -= 1
+                        lag_dict[lw_enter_chunk] += 1
+                        lag_dicts[i] = lag_dict
 
                     fut_dict = copy(fut_dicts[i - 1])
                     fut_dict[fw_leave_chunk] -= 1
                     fut_dict[fw_enter_chunk] += 1
                     fut_dicts[i] = fut_dict
 
-                    # Updata leave_chunks and enter_chunks.
+                    # Update leave_chunks and enter_chunks.
                     lw_leave_chunk = self.sax[i - lws: i - lws + chunk_size]
                     lw_enter_chunk = self.sax[i - chunk_size + 1: i + 1]
                     fw_leave_chunk = self.sax[i: i + chunk_size]
                     fw_enter_chunk = self.sax[i + fws + 1 - chunk_size: i + fws + 1]
 
-        logging.debug("dicts", lag_dicts, fut_dicts)
-
-        self.lag_dicts = lag_dicts
         self.fut_dicts = fut_dicts
+
+        if self.base_sax:
+            self.base_dict = self._construct_SAX_chunk_dict(self.base_sax)
+        else:
+            self.lag_dicts = lag_dicts
+
+    def _normalize_SAX_chunk_dict(self, dictionary):
+        high = max(value for value in dictionary.values())
+
+        for key in dictionary.keys():
+            dictionary[key] /= high
+
+    def _normalize_SAX_chunk_dicts(self):
+        for dictionary in self.fut_dicts.values():
+            self._normalize_SAX_chunk_dict(dictionary)
+
+        if not self.base_dict:    
+            for dictionary in self.lag_dicts.values():
+                self._normalize_SAX_chunk_dict(dictionary)
+        else:
+            self._normalize_SAX_chunk_dict(self.base_dict)
 
     def _compute_anom_score_between_two_windows(self, i):
         """
@@ -184,7 +205,7 @@ class BitmapMod(AnomalyDetectorAlgorithm):
         :param int i: index of the data point between two windows.
         :return float: the anomaly score.
         """
-        lag_window_chunk_dict = self.lag_dicts[i]
+        lag_window_chunk_dict = self.base_dict if self.base_dict else self.lag_dicts[i]
         future_window_chunk_dict = self.fut_dicts[i]
         score = 0
         for chunk in lag_window_chunk_dict:
@@ -204,6 +225,7 @@ class BitmapMod(AnomalyDetectorAlgorithm):
         anom_scores = {}
         self._generate_SAX()
         self._construct_all_SAX_chunk_dict()
+        self._normalize_SAX_chunk_dicts()
         length = self.time_series_length
         lws = self.lag_window_size
         fws = self.future_window_size
