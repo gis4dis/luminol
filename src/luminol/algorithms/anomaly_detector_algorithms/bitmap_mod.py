@@ -16,12 +16,12 @@ import math
 from luminol import exceptions
 from luminol.algorithms.anomaly_detector_algorithms import AnomalyDetectorAlgorithm
 from luminol.modules.time_series import TimeSeries
-from luminol.constants import (DEFAULT_BITMAP_PRECISION,
-                               DEFAULT_BITMAP_CHUNK_SIZE,
-                               DEFAULT_BITMAP_LAGGING_WINDOW_SIZE_PCT,
-                               DEFAULT_BITMAP_LEADING_WINDOW_SIZE_PCT,
-                               DEFAULT_BITMAP_MINIMAL_POINTS_IN_WINDOWS,
-                               DEFAULT_BITMAP_MAXIMAL_POINTS_IN_WINDOWS)
+from luminol.constants import (DEFAULT_BITMAP_MOD_PRECISION,
+                               DEFAULT_BITMAP_MOD_CHUNK_SIZE,
+                               DEFAULT_BITMAP_MOD_LAGGING_WINDOW_SIZE_PCT,
+                               DEFAULT_BITMAP_MOD_LEADING_WINDOW_SIZE_PCT,
+                               DEFAULT_BITMAP_MOD_MINIMAL_POINTS_IN_WINDOWS,
+                               DEFAULT_BITMAP_MOD_MAXIMAL_POINTS_IN_WINDOWS)
 
 class BitmapMod(AnomalyDetectorAlgorithm):
 
@@ -44,16 +44,16 @@ class BitmapMod(AnomalyDetectorAlgorithm):
         :param int chunk_size: chunk size.
         """
         super(BitmapMod, self).__init__(self.__class__.__name__, time_series, baseline_time_series)
-        self.precision = precision if precision and precision > 0 else DEFAULT_BITMAP_PRECISION
-        self.chunk_size = chunk_size if chunk_size and chunk_size > 0 else DEFAULT_BITMAP_CHUNK_SIZE
+        self.precision = precision if precision and precision > 0 else DEFAULT_BITMAP_MOD_PRECISION
+        self.chunk_size = chunk_size if chunk_size and chunk_size > 0 else DEFAULT_BITMAP_MOD_CHUNK_SIZE
         if lag_window_size:
             self.lag_window_size = lag_window_size
         else:
-            self.lag_window_size = int(self.time_series_length * DEFAULT_BITMAP_LAGGING_WINDOW_SIZE_PCT)
+            self.lag_window_size = int(self.time_series_length * DEFAULT_BITMAP_MOD_LAGGING_WINDOW_SIZE_PCT)
         if future_window_size:
             self.future_window_size = future_window_size
         else:
-            self.future_window_size = int(self.time_series_length * DEFAULT_BITMAP_LEADING_WINDOW_SIZE_PCT)
+            self.future_window_size = int(self.time_series_length * DEFAULT_BITMAP_MOD_LEADING_WINDOW_SIZE_PCT)
         self._sanity_check()
 
     def _sanity_check(self):
@@ -61,15 +61,15 @@ class BitmapMod(AnomalyDetectorAlgorithm):
         Check if there are enough data points.
         """
         windows = self.lag_window_size + self.future_window_size
-        if (not self.lag_window_size or not self.future_window_size or self.time_series_length < windows or windows < DEFAULT_BITMAP_MINIMAL_POINTS_IN_WINDOWS):
+        if (not self.lag_window_size or not self.future_window_size or self.time_series_length < windows or windows < DEFAULT_BITMAP_MOD_MINIMAL_POINTS_IN_WINDOWS):
             raise exceptions.NotEnoughDataPoints
 
         # If window size is too big, too many data points will be assigned a score of 0 in the first lag window
         # and the last future window.
-        if self.lag_window_size > DEFAULT_BITMAP_MAXIMAL_POINTS_IN_WINDOWS:
-            self.lag_window_size = DEFAULT_BITMAP_MAXIMAL_POINTS_IN_WINDOWS
-        if self.future_window_size > DEFAULT_BITMAP_MAXIMAL_POINTS_IN_WINDOWS:
-            self.future_window_size = DEFAULT_BITMAP_MAXIMAL_POINTS_IN_WINDOWS
+        if self.lag_window_size > DEFAULT_BITMAP_MOD_MAXIMAL_POINTS_IN_WINDOWS:
+            self.lag_window_size = DEFAULT_BITMAP_MOD_MAXIMAL_POINTS_IN_WINDOWS
+        if self.future_window_size > DEFAULT_BITMAP_MOD_MAXIMAL_POINTS_IN_WINDOWS:
+            self.future_window_size = DEFAULT_BITMAP_MOD_MAXIMAL_POINTS_IN_WINDOWS
 
     def _generate_SAX_single(self, sections, value):
         """
@@ -93,8 +93,8 @@ class BitmapMod(AnomalyDetectorAlgorithm):
         Generate SAX representation for all values of the time series.
         """
         sections = {}
-        self.value_max = max(self.time_series.max(), self.baseline_time_series.max())
-        self.value_min = min(self.time_series.min(), self.baseline_time_series.min())
+        self.value_max = max(self.time_series.max(), self.baseline_time_series.max()) if self.baseline_time_series else self.time_series.max()
+        self.value_min = min(self.time_series.min(), self.baseline_time_series.min()) if self.baseline_time_series else self.time_series.min()
         # Break the whole value range into different sections.
         section_height = (self.value_max - self.value_min) / self.precision
         for section_number in range(self.precision):
@@ -144,7 +144,7 @@ class BitmapMod(AnomalyDetectorAlgorithm):
             else:
                 # Just enter valid range.
                 if lag_dicts[i - 1] is None:
-                    if not self.base_sax:
+                    if not hasattr(self, "base_sax"):
                         lag_dict = self._construct_SAX_chunk_dict(self.sax[i - lws: i])
                         lag_dicts[i] = lag_dict
 
@@ -158,7 +158,7 @@ class BitmapMod(AnomalyDetectorAlgorithm):
 
                 else:
                     # Update dicts according to leave_chunks and enter_chunks.
-                    if not self.base_sax:
+                    if not hasattr(self, "base_sax"):
                         lag_dict = copy(lag_dicts[i - 1])
                         lag_dict[lw_leave_chunk] -= 1
                         lag_dict[lw_enter_chunk] += 1
@@ -177,12 +177,15 @@ class BitmapMod(AnomalyDetectorAlgorithm):
 
         self.fut_dicts = fut_dicts
 
-        if self.base_sax:
+        if hasattr(self, "base_sax"):
             self.base_dict = self._construct_SAX_chunk_dict(self.base_sax)
         else:
             self.lag_dicts = lag_dicts
 
     def _normalize_SAX_chunk_dict(self, dictionary):
+        if dictionary == None:
+            return
+
         high = max(value for value in dictionary.values())
 
         for key in dictionary.keys():
@@ -192,7 +195,7 @@ class BitmapMod(AnomalyDetectorAlgorithm):
         for dictionary in self.fut_dicts.values():
             self._normalize_SAX_chunk_dict(dictionary)
 
-        if not self.base_dict:    
+        if not hasattr(self, "base_dict"):    
             for dictionary in self.lag_dicts.values():
                 self._normalize_SAX_chunk_dict(dictionary)
         else:
@@ -205,7 +208,7 @@ class BitmapMod(AnomalyDetectorAlgorithm):
         :param int i: index of the data point between two windows.
         :return float: the anomaly score.
         """
-        lag_window_chunk_dict = self.base_dict if self.base_dict else self.lag_dicts[i]
+        lag_window_chunk_dict = self.base_dict if hasattr(self, "base_dict") else self.lag_dicts[i]
         future_window_chunk_dict = self.fut_dicts[i]
         score = 0
         for chunk in lag_window_chunk_dict:

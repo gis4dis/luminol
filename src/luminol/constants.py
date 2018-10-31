@@ -41,6 +41,22 @@ DEFAULT_BITMAP_CHUNK_SIZE = 2
 
 DEFAULT_BITMAP_PRECISION = 4
 
+# Constants for BitmapModDetector.
+# Window sizes as percentiles of the whole data length.
+DEFAULT_BITMAP_MOD_LEADING_WINDOW_SIZE_PCT = 0.2 / 16
+
+DEFAULT_BITMAP_MOD_LAGGING_WINDOW_SIZE_PCT = 0.2 / 16
+
+DEFAULT_BITMAP_MOD_MINIMAL_POINTS_IN_WINDOWS = 12
+
+DEFAULT_BITMAP_MOD_MAXIMAL_POINTS_IN_WINDOWS = 200
+
+# Chunk size.
+# Data points form chunks and frequencies of similar chunks are used to determine anomaly scores.
+DEFAULT_BITMAP_MOD_CHUNK_SIZE = 2
+
+DEFAULT_BITMAP_MOD_PRECISION = 4
+
 # Constants for ExpAvgDetector.
 DEFAULT_EMA_SMOOTHING_FACTOR = 0.2
 
