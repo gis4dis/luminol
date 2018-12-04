@@ -144,9 +144,8 @@ class BitmapMod(AnomalyDetectorAlgorithm):
             else:
                 # Just enter valid range.
                 if lag_dicts[i - 1] is None:
-                    if not hasattr(self, "base_sax"):
-                        lag_dict = self._construct_SAX_chunk_dict(self.sax[i - lws: i])
-                        lag_dicts[i] = lag_dict
+                    lag_dict = self._construct_SAX_chunk_dict(self.sax[i - lws: i])
+                    lag_dicts[i] = lag_dict
 
                     lw_leave_chunk = self.sax[0:chunk_size]
                     lw_enter_chunk = self.sax[i - chunk_size + 1: i + 1]
@@ -158,11 +157,10 @@ class BitmapMod(AnomalyDetectorAlgorithm):
 
                 else:
                     # Update dicts according to leave_chunks and enter_chunks.
-                    if not hasattr(self, "base_sax"):
-                        lag_dict = copy(lag_dicts[i - 1])
-                        lag_dict[lw_leave_chunk] -= 1
-                        lag_dict[lw_enter_chunk] += 1
-                        lag_dicts[i] = lag_dict
+                    lag_dict = copy(lag_dicts[i - 1])
+                    lag_dict[lw_leave_chunk] -= 1
+                    lag_dict[lw_enter_chunk] += 1
+                    lag_dicts[i] = lag_dict
 
                     fut_dict = copy(fut_dicts[i - 1])
                     fut_dict[fw_leave_chunk] -= 1
@@ -174,6 +172,65 @@ class BitmapMod(AnomalyDetectorAlgorithm):
                     lw_enter_chunk = self.sax[i - chunk_size + 1: i + 1]
                     fw_leave_chunk = self.sax[i: i + chunk_size]
                     fw_enter_chunk = self.sax[i + fws + 1 - chunk_size: i + fws + 1]
+
+        self.fut_dicts = fut_dicts
+        self.lag_dicts = lag_dicts
+
+    def _construct_base_fut_SAX_chunk_dict(self):
+        """
+        Construct the chunk dicts for future window at each index and baseline series.
+         e.g: Suppose we have a SAX sequence as '1234567890', both window sizes are 3, and the chunk size is 2.
+         The first index that has a lagging window is 3. For index equals 3, the lagging window has sequence '123',
+         the chunk to leave lagging window(lw_leave_chunk) is '12', and the chunk to enter lagging window(lw_enter_chunk) is '34'.
+         Therefore, given chunk dicts at i, to compute chunk dicts at i+1, simply decrement the count for lw_leave_chunk,
+         and increment the count for lw_enter_chunk from chunk dicts at i. Same method applies to future window as well.
+        """
+        fut_dicts = {}
+        length = self.time_series_length
+        fws = self.future_window_size
+        ls = int(fws/2)
+        rs = fws - ls - 1
+
+        chunk_size = self.chunk_size
+
+        for i in range(length):
+            # If i is too small or too big, there will be no chunk dicts.
+            if i < ls or i > length - rs:
+                fut_dicts[i] = None
+
+            else:
+                # Just enter valid range.
+                if fut_dicts[i - 1] is None:
+                    fut_dict = self._construct_SAX_chunk_dict(self.sax[i - ls: i + rs + 1])
+                    fut_dicts[i] = fut_dict
+
+                    fw_leave_chunk = self.sax[0:chunk_size]
+                    fw_enter_chunk = self.sax[i + rs + 2 - chunk_size: i + rs + 2]
+
+                    # lw_enter_chunk = self.sax[i - chunk_size + 1: i + 1]
+
+                    # fut_dict = self._construct_SAX_chunk_dict(self.sax[i: i + fws])
+                    # fut_dicts[i] = fut_dict
+                    # fw_leave_chunk = self.sax[i: i + chunk_size]
+                    # fw_enter_chunk = self.sax[i + fws + 1 - chunk_size: i + fws + 1]
+
+                else:
+                    # Update dicts according to leave_chunks and enter_chunks.
+                    # lag_dict = copy(lag_dicts[i - 1])
+                    # lag_dict[lw_leave_chunk] -= 1
+                    # lag_dict[lw_enter_chunk] += 1
+                    # lag_dicts[i] = lag_dict
+
+                    fut_dict = copy(fut_dicts[i - 1])
+                    fut_dict[fw_leave_chunk] -= 1
+                    fut_dict[fw_enter_chunk] += 1
+                    fut_dicts[i] = fut_dict
+
+                    # Update leave_chunks and enter_chunks.
+                    # lw_leave_chunk = self.sax[i - lws: i - lws + chunk_size]
+                    # lw_enter_chunk = self.sax[i - chunk_size + 1: i + 1]
+                    fw_leave_chunk = self.sax[i - ls: i - ls + chunk_size]
+                    fw_enter_chunk = self.sax[i + rs + 2 - chunk_size: i + rs + 2]
 
         self.fut_dicts = fut_dicts
 
@@ -227,13 +284,21 @@ class BitmapMod(AnomalyDetectorAlgorithm):
         """
         anom_scores = {}
         self._generate_SAX()
-        self._construct_all_SAX_chunk_dict()
+        if hasattr(self, "base_sax"):
+            self._construct_base_fut_SAX_chunk_dict()
+        else:
+            self._construct_all_SAX_chunk_dict()
         self._normalize_SAX_chunk_dicts()
         length = self.time_series_length
-        lws = self.lag_window_size
-        fws = self.future_window_size
+        lower_lim = self.lag_window_size
+        upper_lim = self.future_window_size
+
+        if hasattr(self, "base_dict"):
+            lower_lim = int(upper_lim / 2)
+            upper_lim -= lower_lim + 1
+
         for i, timestamp in enumerate(self.time_series.timestamps):
-            if i < lws or i > length - fws:
+            if i < lower_lim or i > length - upper_lim:
                 anom_scores[timestamp] = 0
             else:
                 anom_scores[timestamp] = self._compute_anom_score_between_two_windows(i)
