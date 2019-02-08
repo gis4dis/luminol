@@ -176,7 +176,7 @@ class BitmapMod(AnomalyDetectorAlgorithm):
         self.fut_dicts = fut_dicts
         self.lag_dicts = lag_dicts
 
-    def _construct_base_fut_SAX_chunk_dict(self):
+    def _construct_base_sliding_SAX_chunk_dict(self):
         """
         Construct the chunk dicts for future window at each index and baseline series.
          e.g: Suppose we have a SAX sequence as '1234567890', both window sizes are 3, and the chunk size is 2.
@@ -188,14 +188,14 @@ class BitmapMod(AnomalyDetectorAlgorithm):
         fut_dicts = {}
         length = self.time_series_length
         fws = self.future_window_size
-        ls = int(fws/2)
-        rs = fws - ls - 1
+        ls = fws - 1
+        rs = 0
 
         chunk_size = self.chunk_size
 
         for i in range(length):
             # If i is too small or too big, there will be no chunk dicts.
-            if i < ls or i > length - rs:
+            if i < ls:
                 fut_dicts[i] = None
 
             else:
@@ -230,7 +230,8 @@ class BitmapMod(AnomalyDetectorAlgorithm):
                     # lw_leave_chunk = self.sax[i - lws: i - lws + chunk_size]
                     # lw_enter_chunk = self.sax[i - chunk_size + 1: i + 1]
                     fw_leave_chunk = self.sax[i - ls: i - ls + chunk_size]
-                    fw_enter_chunk = self.sax[i + rs + 2 - chunk_size: i + rs + 2]
+                    if i != length - 1:
+                        fw_enter_chunk = self.sax[i + rs + 2 - chunk_size: i + rs + 2]
 
         self.fut_dicts = fut_dicts
 
@@ -285,7 +286,7 @@ class BitmapMod(AnomalyDetectorAlgorithm):
         anom_scores = {}
         self._generate_SAX()
         if hasattr(self, "base_sax"):
-            self._construct_base_fut_SAX_chunk_dict()
+            self._construct_base_sliding_SAX_chunk_dict()
         else:
             self._construct_all_SAX_chunk_dict()
         self._normalize_SAX_chunk_dicts()
