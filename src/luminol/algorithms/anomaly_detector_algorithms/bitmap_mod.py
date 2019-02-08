@@ -295,11 +295,11 @@ class BitmapMod(AnomalyDetectorAlgorithm):
         upper_lim = self.future_window_size
 
         if hasattr(self, "base_dict"):
-            lower_lim = int(upper_lim / 2)
-            upper_lim -= lower_lim + 1
+            lower_lim = self.future_window_size - 1
+            upper_lim = 0
 
         for i, timestamp in enumerate(self.time_series.timestamps):
-            if i < lower_lim or i > length - upper_lim:
+            if i < lower_lim:
                 anom_scores[timestamp] = 0
             else:
                 anom_scores[timestamp] = self._compute_anom_score_between_two_windows(i)
