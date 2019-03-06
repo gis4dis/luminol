@@ -23,7 +23,7 @@ from luminol.constants import (DEFAULT_BITMAP_MOD_PRECISION,
                                DEFAULT_BITMAP_MOD_MINIMAL_POINTS_IN_WINDOWS,
                                DEFAULT_BITMAP_MOD_MAXIMAL_POINTS_IN_WINDOWS)
 
-class BitmapMod(AnomalyDetectorAlgorithm):
+class BitmapModShift(AnomalyDetectorAlgorithm):
 
     """
     Bitmap Algorithm.
@@ -43,7 +43,7 @@ class BitmapMod(AnomalyDetectorAlgorithm):
         :param int future_window_size: future window size.
         :param int chunk_size: chunk size.
         """
-        super(BitmapMod, self).__init__(self.__class__.__name__, time_series, baseline_time_series)
+        super(BitmapModShift, self).__init__(self.__class__.__name__, time_series, baseline_time_series)
         self.precision = precision if precision and precision > 0 else DEFAULT_BITMAP_MOD_PRECISION
         self.chunk_size = chunk_size if chunk_size and chunk_size > 0 else DEFAULT_BITMAP_MOD_CHUNK_SIZE
         if lag_window_size:
@@ -176,7 +176,7 @@ class BitmapMod(AnomalyDetectorAlgorithm):
         self.fut_dicts = fut_dicts
         self.lag_dicts = lag_dicts
 
-    def _construct_base_fut_SAX_chunk_dict(self):
+    def _construct_base_sliding_SAX_chunk_dict(self):
         """
         Construct the chunk dicts for future window at each index and baseline series.
          e.g: Suppose we have a SAX sequence as '1234567890', both window sizes are 3, and the chunk size is 2.
@@ -188,14 +188,14 @@ class BitmapMod(AnomalyDetectorAlgorithm):
         fut_dicts = {}
         length = self.time_series_length
         fws = self.future_window_size
-        ls = int(fws/2)
-        rs = fws - ls - 1
+        ls = fws - 1
+        rs = 0
 
         chunk_size = self.chunk_size
 
         for i in range(length):
             # If i is too small or too big, there will be no chunk dicts.
-            if i < ls or i > length - rs:
+            if i < ls:
                 fut_dicts[i] = None
 
             else:
@@ -230,7 +230,8 @@ class BitmapMod(AnomalyDetectorAlgorithm):
                     # lw_leave_chunk = self.sax[i - lws: i - lws + chunk_size]
                     # lw_enter_chunk = self.sax[i - chunk_size + 1: i + 1]
                     fw_leave_chunk = self.sax[i - ls: i - ls + chunk_size]
-                    fw_enter_chunk = self.sax[i + rs + 2 - chunk_size: i + rs + 2]
+                    if i != length - 1:
+                        fw_enter_chunk = self.sax[i + rs + 2 - chunk_size: i + rs + 2]
 
         self.fut_dicts = fut_dicts
 
@@ -285,7 +286,7 @@ class BitmapMod(AnomalyDetectorAlgorithm):
         anom_scores = {}
         self._generate_SAX()
         if hasattr(self, "base_sax"):
-            self._construct_base_fut_SAX_chunk_dict()
+            self._construct_base_sliding_SAX_chunk_dict()
         else:
             self._construct_all_SAX_chunk_dict()
         self._normalize_SAX_chunk_dicts()
@@ -294,11 +295,11 @@ class BitmapMod(AnomalyDetectorAlgorithm):
         upper_lim = self.future_window_size
 
         if hasattr(self, "base_dict"):
-            lower_lim = int(upper_lim / 2)
-            upper_lim -= lower_lim + 1
+            lower_lim = self.future_window_size - 1
+            upper_lim = 0
 
         for i, timestamp in enumerate(self.time_series.timestamps):
-            if i < lower_lim or i > length - upper_lim:
+            if i < lower_lim:
                 anom_scores[timestamp] = 0
             else:
                 anom_scores[timestamp] = self._compute_anom_score_between_two_windows(i)
